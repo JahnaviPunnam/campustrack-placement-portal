@@ -25,3 +25,5 @@ prisma/test.db
 uploads/resumes/*
 
 prisma/*.db.backup
+
+schema.sqlite.backup.prisma

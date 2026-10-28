@@ -1,0 +1,478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  passwordHash       String
+  name               String
+  role               String   @default("STUDENT")
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  sessionVersion     Int      @default(0)
+  lastLoginAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  studentProfile      StudentProfile?
+  recruiterProfile    RecruiterProfile?
+  companiesCreated    Company[]              @relation("CompanyCreator")
+  drivesCreated       Drive[]                @relation("DriveCreator")
+  drivesApproved      Drive[]                @relation("DriveApprover")
+  studentsVerified    StudentProfile[]       @relation("StudentVerifier")
+  skillsVerified      StudentSkill[]         @relation("SkillVerifier")
+  overridesCreated    EligibilityOverride[]  @relation("OverrideCreator")
+  overridesRevoked    EligibilityOverride[]  @relation("OverrideRevoker")
+  offersCreated       Offer[]                @relation("OfferCreator")
+  roundResultsUpdated ApplicationRoundResult[] @relation("RoundResultActor")
+  policiesUpdated     PlacementPolicy[]      @relation("PolicyUpdater")
+  notifications       Notification[]
+  auditLogs           AuditLog[]             @relation("AuditActor")
+
+  @@index([role, isActive])
+}
+
+model StudentProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  rollNumber          String    @unique
+  phone               String?
+  branch              String
+  graduationYear      Int
+  cgpa                Float?
+  backlogs            Int       @default(0)
+  headline            String?
+  location            String?
+  githubUrl           String?
+  linkedinUrl         String?
+  resumePath          String?
+  resumeOriginalName  String?
+  resumeMimeType      String?
+  resumeSizeBytes     Int?
+  resumeUpdatedAt     DateTime?
+  targetRoleProfileId String?
+  isVerified          Boolean   @default(false)
+  verifiedAt          DateTime?
+  verifiedById        String?
+  verificationNote    String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verifiedBy        User?            @relation("StudentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  targetRoleProfile RoleProfile?     @relation(fields: [targetRoleProfileId], references: [id], onDelete: SetNull)
+  skills            StudentSkill[]
+  skillHistory      SkillHistory[]
+  applications      Application[]
+  offers            Offer[]
+  overrides         EligibilityOverride[]
+  savedByRecruiters SavedCandidate[]
+
+  @@index([branch, graduationYear])
+  @@index([cgpa])
+  @@index([isVerified])
+  @@index([targetRoleProfileId])
+}
+
+model Skill {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  category          String
+  description       String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  studentSkills      StudentSkill[]
+  skillHistory       SkillHistory[]
+  driveRequirements  DriveRequiredSkill[]
+  roleRequirements   RoleProfileSkill[]
+  learningResources  LearningResource[]
+
+  @@unique([name, category])
+  @@index([category, isActive])
+}
+
+model StudentSkill {
+  id               String    @id @default(cuid())
+  studentProfileId String
+  skillId          String
+  proficiency      Int
+  evidence         String?
+  isVerified       Boolean   @default(false)
+  verifiedAt       DateTime?
+  verifiedById     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  skill          Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  verifiedBy     User?          @relation("SkillVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentProfileId, skillId])
+  @@index([skillId, proficiency])
+  @@index([studentProfileId])
+  @@index([isVerified])
+}
+
+model SkillHistory {
+  id               String   @id @default(cuid())
+  studentProfileId String
+  skillId          String
+  proficiency      Int
+  note             String?
+  source           String   @default("MANUAL")
+  createdAt        DateTime @default(now())
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  skill          Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@index([studentProfileId, createdAt])
+  @@index([studentProfileId, skillId, createdAt])
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  website     String?
+  industry    String
+  description String?
+  location    String?
+  tier        Int      @default(2)
+  logoPath    String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy  User              @relation("CompanyCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  recruiters RecruiterProfile[]
+  drives     Drive[]
+
+  @@index([industry, isActive])
+}
+
+model RecruiterProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyId   String
+  designation String?
+  phone       String?
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  savedCandidates  SavedCandidate[]
+
+  @@index([companyId])
+}
+
+model Drive {
+  id              String    @id @default(cuid())
+  companyId       String
+  createdById     String
+  approvedById    String?
+  title           String
+  roleTitle       String
+  description     String?
+  package         Float
+  location        String
+  tier            Int       @default(2)
+  openings        Int?
+  status          String    @default("DRAFT")
+  source          String    @default("OFFICER")
+  deadline        DateTime
+  publishedAt     DateTime?
+  approvedAt      DateTime?
+  rejectionReason String?
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company           Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy         User                 @relation("DriveCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy        User?                @relation("DriveApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  eligibilityRule   EligibilityRule?
+  requiredSkills    DriveRequiredSkill[]
+  rounds            Round[]
+  applications      Application[]
+  overrides         EligibilityOverride[]
+
+  @@index([status, deadline])
+  @@index([companyId, status])
+  @@index([createdById])
+  @@index([tier])
+}
+
+model EligibilityRule {
+  id                     String   @id @default(cuid())
+  driveId                String   @unique
+  minCgpa                Float?
+  maxBacklogs            Int?
+  allowedBranches        String   @default("")
+  allowedGraduationYears String   @default("")
+  requireVerifiedProfile Boolean  @default(true)
+  requireResume          Boolean  @default(true)
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  drive Drive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+}
+
+model DriveRequiredSkill {
+  id              String   @id @default(cuid())
+  driveId         String
+  skillId         String
+  minProficiency  Int      @default(1)
+  weight          Int      @default(1)
+  isMandatory     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  drive Drive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([driveId, skillId])
+  @@index([skillId])
+}
+
+model Round {
+  id              String    @id @default(cuid())
+  driveId         String
+  name            String
+  type            String
+  order           Int
+  description     String?
+  scheduledAt     DateTime?
+  durationMinutes Int?
+  venue           String?
+  meetingLink     String?
+  status          String    @default("PLANNED")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  drive               Drive                   @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  results             ApplicationRoundResult[]
+  currentApplications Application[]           @relation("CurrentRound")
+
+  @@unique([driveId, order])
+  @@index([driveId, scheduledAt])
+}
+
+model Application {
+  id                    String    @id @default(cuid())
+  studentProfileId      String
+  driveId               String
+  status                String    @default("APPLIED")
+  source                String    @default("STUDENT")
+  currentRoundId        String?
+  coverNote             String?
+  eligibilitySnapshot   String    @default("{}")
+  matchScore            Int?
+  isDreamOffer          Boolean   @default(false)
+  eligibilityOverridden Boolean   @default(false)
+  appliedAt             DateTime  @default(now())
+  statusUpdatedAt       DateTime  @default(now())
+  withdrawnAt           DateTime?
+  rejectionReason       String?
+  recruiterFeedback     String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  studentProfile StudentProfile          @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  drive          Drive                   @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  currentRound   Round?                  @relation("CurrentRound", fields: [currentRoundId], references: [id], onDelete: SetNull)
+  roundResults   ApplicationRoundResult[]
+  offer          Offer?
+
+  @@unique([studentProfileId, driveId])
+  @@index([driveId, status, appliedAt])
+  @@index([studentProfileId, status])
+  @@index([currentRoundId])
+}
+
+model ApplicationRoundResult {
+  id            String    @id @default(cuid())
+  applicationId String
+  roundId       String
+  status        String    @default("PENDING")
+  score         Float?
+  slotAt        DateTime?
+  notes         String?
+  feedback      String?
+  resultAt      DateTime?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  round       Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  updatedBy   User?       @relation("RoundResultActor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([applicationId, roundId])
+  @@index([roundId, status])
+  @@index([applicationId])
+}
+
+model Offer {
+  id               String   @id @default(cuid())
+  applicationId    String   @unique
+  studentProfileId String
+  package          Float
+  roleTitle        String
+  location         String
+  tier             Int
+  status           String   @default("ACCEPTED")
+  offerDate        DateTime @default(now())
+  joiningDate      DateTime?
+  notes            String?
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  application    Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation("OfferCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([studentProfileId, status])
+  @@index([offerDate])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  link      String?
+  isRead    Boolean  @default(false)
+  dedupeKey String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  action       String
+  entityType   String
+  entityId     String?
+  beforeJson   String?
+  afterJson    String?
+  metadataJson String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model EligibilityOverride {
+  id               String    @id @default(cuid())
+  studentProfileId String
+  driveId          String
+  reason           String
+  createdById      String
+  isActive         Boolean   @default(true)
+  revokedAt        DateTime?
+  revokedById      String?
+  revokeReason     String?
+  createdAt        DateTime  @default(now())
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  drive          Drive          @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation("OverrideCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy      User?          @relation("OverrideRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentProfileId, driveId])
+  @@index([driveId, isActive])
+}
+
+model PlacementPolicy {
+  id                          String   @id @default("global")
+  maxOffersPerStudent         Int      @default(1)
+  blockedPlacedTiers          String   @default("1,2")
+  dreamOfferEnabled           Boolean  @default(true)
+  minimumDreamOfferIncrease   Float    @default(0)
+  requireVerifiedProfileDefault Boolean @default(true)
+  updatedById                 String?
+  updatedAt                   DateTime @updatedAt
+
+  updatedBy User? @relation("PolicyUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+model RoleProfile {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  skills   RoleProfileSkill[]
+  students StudentProfile[]
+}
+
+model RoleProfileSkill {
+  id                  String @id @default(cuid())
+  roleProfileId       String
+  skillId             String
+  requiredProficiency Int    @default(3)
+  weight              Int    @default(1)
+  isMandatory         Boolean @default(true)
+
+  roleProfile RoleProfile @relation(fields: [roleProfileId], references: [id], onDelete: Cascade)
+  skill       Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([roleProfileId, skillId])
+  @@index([skillId])
+}
+
+model LearningResource {
+  id       String  @id @default(cuid())
+  skillId  String
+  title    String
+  url      String
+  provider String?
+  type     String  @default("DOCS")
+  isActive Boolean @default(true)
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, url])
+  @@index([skillId])
+}
+
+model SavedCandidate {
+  id                 String   @id @default(cuid())
+  recruiterProfileId String
+  studentProfileId   String
+  note               String?
+  createdAt          DateTime @default(now())
+
+  recruiterProfile RecruiterProfile @relation(fields: [recruiterProfileId], references: [id], onDelete: Cascade)
+  studentProfile   StudentProfile   @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([recruiterProfileId, studentProfileId])
+  @@index([studentProfileId])
+}
