@@ -23,3 +23,5 @@ prisma/test.db
 .DS_Store
 
 uploads/resumes/*
+
+prisma/*.db.backup
